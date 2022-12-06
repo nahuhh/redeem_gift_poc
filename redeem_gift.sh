@@ -3,21 +3,54 @@
 
 # data saved in your 'redeem gift card app / wallet'
 
-# Paste destination address and wallet URI
+# Prompt for scanning method
+echo 'How would you like to scan your Gift Card?'
+scan_method="USER INPUT"
+read -p "NFC,QR CODE,PASTE [N/Q/P]: " scan_method
+
+if   [[ $scan_method == n* ]] || [[ $scan_method == N* ]]
+then echo 'Tap the Gift Card'
+monero_uri=$(termux-nfc -r short | jq -r .Record.Payload)
+
+elif [[ $scan_method == p* ]] || [[ $scan_method == P* ]]
+then echo 'Paste the URI'
+monero_uri="USER INPUT"
+read -p "URI: " monero_uri
+
+elif [[ $scan_method == q* ]] || [[ $scan_method == Q* ]]
+then echo 'BinaryEye will open. Make sure to copy the scan result'
+read -p "Press enter to continue"
+am start --user 0 -n de.markusfisch.android.binaryeye/.activity.CameraActivity
+monero_uri="USER INPUT"
+read -p "Paste QR Results: " monero_uri
+else
+echo Try again.
+exit 0
+fi
+
+# enter destination address
+# TODO 
+echo 'Paste your personal wallet address'
 pay_to_address="USER INPUT"
 read -p "Destination Address: " pay_to_address
-
-monero_uri="USER INPUT"
-read -p "Paste URI: " monero_uri
-
+printf $pay_to_address
+conf_addr="USER INPUT"
+read -p "Does the above address look correct? [Y/N]:" conf_addr
+if [[ $conf_addr == y* ]] || [[ $conf_addr == Y* ]]
+then echo 'Address Confirmed'
+else
+echo "Restore Aborted."
+exit 0
+fi
+ 
 # Static node for now
 node="node2.monerodevs.org:38089/json_rpc"
 rpc_binary="./monero-wallet-rpc --stagenet"
 
-#basic sanity checks
+# basic sanity checks
 IFS=':' read -ra ADDR <<< "$monero_uri"
 if [[ ${ADDR[0]} != "monero_wallet" ]];
-	then echo "Not a monero_wallet URI";
+	then echo "Not a monero_wallet uri";
 	exit 0
 fi
 
@@ -114,3 +147,4 @@ curl http://localhost:18082/json_rpc -d "{\"jsonrpc\":\"2.0\",\"id\":\"0\",\"met
 curl http://localhost:18082/json_rpc -d "{\"jsonrpc\":\"2.0\",\"id\":\"0\",\"method\":\"sweep_all\",\"params\":{\"address\":\"${pay_to_address}\",\"do_not_relay\":true}}" -H 'Content-Type: application/json'
 #stop wallet at the end
 curl http://localhost:18082/json_rpc -d '{"jsonrpc":"2.0","id":"0","method":"stop_wallet"}' -H 'Content-Type: application/json'
+exit 0
