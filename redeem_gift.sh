@@ -29,11 +29,11 @@ exit 0
 fi
 
 # enter destination address
-# TODO 
+# TODO tap and scan
 echo 'Paste your personal wallet address'
 pay_to_address="USER INPUT"
 read -p "Destination Address: " pay_to_address
-printf $pay_to_address
+printf "$pay_to_address\n"
 conf_addr="USER INPUT"
 read -p "Does the above address look correct? [Y/N]:" conf_addr
 if [[ $conf_addr == y* ]] || [[ $conf_addr == Y* ]]
