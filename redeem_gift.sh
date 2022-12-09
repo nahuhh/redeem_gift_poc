@@ -1,23 +1,78 @@
 #!/bin/bash
 
 # TODO auto Generate the monero_wallet: from an open wallet (get_transfers in/out)
-
 # data saved in your 'redeem gift card app / wallet'
 node="node2.monerodevs.org:38089/json_rpc"
-pay_to_address="59kCsXvXVWg6BBCwXE6Kj5hATsgVGHfSxM5ZJBPrPsPXcxwLza5AdKKTuZhXYrv2dqD1o29mqhzJQJzcBXMuzzGEEuYRaec"
-rpc_binary="monero-wallet-rpc --stagenet"
-# obtained from scanning a qr code
-#monero_uri="monero_wallet:address=58Bj65FCpfpULRXyf7mmsY1vB4qiW8qQ8X99tw783rSggPjmvUcRHycaXUQfSwMVpuUj6FWDr4fNHFYyo7f1XdtsJsXAJ1Y&spend_key=75ca1b95ee9dd8bbf059da64c6750fd500731f8775389ce089d516d46108fc05&view_key=c59b3e3182d9c665d0f3a1776a28301410283ab6ff6a9bd3abc7a5bb37758f03&txid=f8477b831a028f07d5638157afc0fbf0897066b4caa29dc48f885fba79cec814,bd20081e0d1abf05b275bcc06bc7e315bc03c57870e247c82c8a45b30f4d1b34,cdbed9b4b2f56de7cce9255610d0cae702aefb36f9a4ff15698ea448f29f6188"
+rpc_binary="./monero-wallet-rpc --stagenet"
+# Prompt for scanning method
+echo 'How would you like to scan your Gift Card?'
+scan_uri="USER INPUT"
+read -p "NFC,QR CODE,PASTE [N/P/Q]: " scan_uri
+if   [[ $scan_uri == n* || $scan_uri == N* ]]
+	then echo 'Tap the Gift Card'
+	monero_uri=$(termux-nfc -r short | jq -r .Record.Payload)
+elif [[ $scan_uri == p* || $scan_uri == P* ]]
+	then echo 'Paste the URI'
+	monero_uri="USER INPUT"
+	read -p "URI: " monero_uri
+elif [[ $scan_uri == q* || $scan_uri == Q* ]]
+	then echo 'BinaryEye will open. Make sure to copy the scan result'
+	read -p "Press enter to continue"
+	am start --user 0 -n de.markusfisch.android.binaryeye/.activity.CameraActivity
+	monero_uri="USER INPUT"
+	read -p "Paste QR Results: " monero_uri
+else
+	echo Try again.
+	exit 0
+fi
 
-#input_seed="portents toyed judge sighting smidgen masterful selfish sack cabin loudly maps gown thumbs five sword tonic cunning android ourselves lawsuit fossil pedantic origin peaches toyed"
-#uriify_seed=$(echo $input_seed | sed 's/ /%20/g')
-#monero_uri="monero_wallet:seed=${uriify_seed}&txid=f8477b831a028f07d5638157afc0fbf0897066b4caa29dc48f885fba79cec814,bd20081e0d1abf05b275bcc06bc7e315bc03c57870e247c82c8a45b30f4d1b34,cdbed9b4b2f56de7cce9255610d0cae702aefb36f9a4ff15698ea448f29f6188"
-monero_uri="monero_wallet:seed=portents%20toyed%20judge%20sighting%20smidgen%20masterful%20selfish%20sack%20cabin%20loudly%20maps%20gown%20thumbs%20five%20sword%20tonic%20cunning%20android%20ourselves%20lawsuit%20fossil%20pedantic%20origin%20peaches%20toyed&txid=f8477b831a028f07d5638157afc0fbf0897066b4caa29dc48f885fba79cec814,bd20081e0d1abf05b275bcc06bc7e315bc03c57870e247c82c8a45b30f4d1b34,cdbed9b4b2f56de7cce9255610d0cae702aefb36f9a4ff15698ea448f29f6188"
+# prompt for destination address
+echo 'How would you like to enter your destination address?'
+scan_wallet="USER INPUT"
+read -p "NFC,QR CODE,PASTE [N/P/Q]: " scan_wallet
+if   [[ $scan_wallet == n* || $scan_wallet == N* ]]
+	then echo 'Tap to scan'
+	pay_to_address=$(termux-nfc -r short | jq -r .Record.Payload)
+elif [[ $scan_wallet == p* || $scan_wallet == P* ]]
+	then echo 'Paste your personal wallet address'
+	pay_to_address="USER INPUT"
+	read -p "Wallet address: " pay_to_address
+elif [[ $scan_wallet == q* || $scan_wallet == Q* ]]
+	then echo 'BinaryEye will open. Make sure to copy the scan result'
+	read -p "Press enter to continue"
+	am start --user 0 -n de.markusfisch.android.binaryeye/.activity.CameraActivity
+	pay_to_address="USER INPUT"
+	read -p "Paste QR Results: " pay_to_address
+else
+	echo Try again.
+	exit 0
+fi
 
-#basic sanity checks
+# basic sanity check for qr and nfc
+if [[ $scan_wallet != p* || $scan_wallet != P* ]]; then
+IFS=':' read -ra ADDR <<< "$pay_to_address"
+	if [[ ${ADDR[0]} != "monero" ]]; then
+        echo "Not a 'monero:' wallet uri";
+        exit 0
+	fi
+fi
+
+pay_to_address=$(echo $pay_to_address | sed "s/"monero:"/""/g")
+printf "\n$pay_to_address\n"
+conf_addr="USER INPUT"
+read -p "Does the above address look correct? [Y/N]:" conf_addr
+if [[ $conf_addr == y* || $conf_addr == Y* ]]; then
+	echo 'Address Confirmed'
+	else
+	echo "Restore Aborted."
+	exit 0
+fi
+
+# basic sanity checks
 IFS=':' read -ra ADDR <<< "$monero_uri"
 if [[ ${ADDR[0]} != "monero_wallet" ]]; then
-	echo "Not a monero_wallet uri";exit 0
+	echo "Not a 'monero_wallet:' uri";
+	exit 0
 fi
 
 generate_from_seed=0
@@ -35,7 +90,6 @@ for chunk in "${params[@]}"; do
 	fi
 	if [[ "${value[0]}" == "view_key" ]]; then
 		view_key="${value[1]}"
-
 	fi
 	if [[ "${value[0]}" == "txid" ]]; then
 		txid="${value[1]}"
@@ -52,6 +106,7 @@ printf "params from uri:\n"
 printf "view_key:\n$view_key\n"
 printf "spend_key:\n$spend_key\n"
 printf "txid list:\n$txid\n"
+printf "your address:\n$pay_to_address\n"
 #printf "seed:\n'$seed'\n"
 
 # confirm 4 requirements (address/spend/view/txids) or (seed/txids)
@@ -59,7 +114,7 @@ if [[ ! "$txid" ]]; then
 	echo "no txids to scan"; exit 0
 elif [[ "$seed" ]]; then
 	generate_from_seed=1
-elif [[ "$view_key" ]] && [[ "$spend_key" ]] && [[ "$address" ]]; then
+elif [[ "$view_key" && "$spend_key" && "$address" ]]; then
 	:
 else
 	echo "minimum [seed+txid] needed to redeem. or [address+viewkey+spendkey+txid]"; exit 0
@@ -85,7 +140,7 @@ do
 	status=$(curl -sk http://localhost:18082/json_rpc -d '{"jsonrpc":"2.0","id":"0","method":"stop_wallet"}' -H 'Content-Type: application/json')
 done
 
-echo 
+echo
 rm redeem_gift
 rm redeem_gift.keys
 
@@ -95,9 +150,7 @@ if [[ $generate_from_seed == 1 ]]; then
 else
 	resp_generate=$(curl -sk http://localhost:18082/json_rpc -d "{\"jsonrpc\":\"2.0\",\"id\":\"0\",\"method\":\"generate_from_keys\",\"params\":{\"address\":\"${address}\",\"restore_height\":${HEIGHT},\"filename\":\"redeem_gift\",\"spendkey\":\"${spend_key}\",\"viewkey\":\"${view_key}\",\"password\":\"\"}}" -H 'Content-Type: application/json')
 fi
-
 # todo check if error returned then exit
-
 
 WALLET="redeem_gift"
 while [[ ! -f "$WALLET" ]]
@@ -121,3 +174,4 @@ curl http://localhost:18082/json_rpc -d "{\"jsonrpc\":\"2.0\",\"id\":\"0\",\"met
 curl http://localhost:18082/json_rpc -d "{\"jsonrpc\":\"2.0\",\"id\":\"0\",\"method\":\"sweep_all\",\"params\":{\"address\":\"${pay_to_address}\",\"do_not_relay\":true}}" -H 'Content-Type: application/json'
 #stop wallet at the end
 curl http://localhost:18082/json_rpc -d '{"jsonrpc":"2.0","id":"0","method":"stop_wallet"}' -H 'Content-Type: application/json'
+exit 0
