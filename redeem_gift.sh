@@ -4,6 +4,7 @@
 # data saved in your 'redeem gift card app / wallet'
 node="node2.monerodevs.org:38089/json_rpc"
 rpc_binary="./monero-wallet-rpc --stagenet"
+
 # Prompt for scanning method
 echo 'How would you like to scan your Gift Card?'
 scan_uri="USER INPUT"
@@ -48,15 +49,6 @@ else
 	exit 0
 fi
 
-# basic sanity check for qr and nfc
-if [[ $scan_wallet != p* || $scan_wallet != P* ]]; then
-IFS=':' read -ra ADDR <<< "$pay_to_address"
-	if [[ ${ADDR[0]} != "monero" ]]; then
-        echo "Not a 'monero:' wallet uri";
-        exit 0
-	fi
-fi
-
 pay_to_address=$(echo $pay_to_address | sed "s/"monero:"/""/g")
 printf "\n$pay_to_address\n"
 conf_addr="USER INPUT"
@@ -71,7 +63,7 @@ fi
 # basic sanity checks
 IFS=':' read -ra ADDR <<< "$monero_uri"
 if [[ ${ADDR[0]} != "monero_wallet" ]]; then
-	echo "Not a 'monero_wallet:' uri";
+	echo "Not a 'monero_wallet:' uri"
 	exit 0
 fi
 
@@ -146,11 +138,10 @@ rm redeem_gift.keys
 
 if [[ $generate_from_seed == 1 ]]; then
 	seed=$(echo $seed | sed 's/%20/ /g')
-	resp_generate=$(curl -sk http://localhost:18082/json_rpc -d "{\"jsonrpc\":\"2.0\",\"id\":\"0\",\"method\":\"restore_deterministic_wallet\",\"params\":{\"seed\":\"${seed}\",\"restore_height\":${HEIGHT},\"filename\":\"redeem_gift\",\"password\":\"\"}}" -H 'Content-Type: application/json')
+	resp_generate=$(curl -sk http://localhost:18082/json_rpc -d '{"jsonrpc":"2.0","id":"0","method":"restore_deterministic_wallet","params":{"seed":"'"${seed}"'","restore_height":'${HEIGHT}',"filename":"redeem_gift","password":""}}' -H 'Content-Type: application/json')
 else
-	resp_generate=$(curl -sk http://localhost:18082/json_rpc -d "{\"jsonrpc\":\"2.0\",\"id\":\"0\",\"method\":\"generate_from_keys\",\"params\":{\"address\":\"${address}\",\"restore_height\":${HEIGHT},\"filename\":\"redeem_gift\",\"spendkey\":\"${spend_key}\",\"viewkey\":\"${view_key}\",\"password\":\"\"}}" -H 'Content-Type: application/json')
+	resp_generate=$(curl -sk http://localhost:18082/json_rpc -d '{"jsonrpc":"2.0","id":"0","method":"generate_from_keys","params":{"address":"'"${address}"'","restore_height":${HEIGHT},"filename":"redeem_gift","spendkey":"'"${spend_key}"'","viewkey":"'"${view_key}"'","password":""}}' -H 'Content-Type: application/json')
 fi
-# todo check if error returned then exit
 
 WALLET="redeem_gift"
 while [[ ! -f "$WALLET" ]]
@@ -169,9 +160,10 @@ IFS=',' read -ra txids <<< ${txid}
 txid_list=$(jq --compact-output --null-input '$ARGS.positional' --args -- "${txids[@]}")
 
 #scan_tx accepts our list
-curl http://localhost:18082/json_rpc -d "{\"jsonrpc\":\"2.0\",\"id\":\"0\",\"method\":\"scan_tx\",\"params\":{\"txids\":${txid_list}}}" -H 'Content-Type: application/json'
+curl http://localhost:18082/json_rpc -d '{"jsonrpc":"2.0","id":"0","method":"scan_tx","params":{"txids":'${txid_list}'}}' -H 'Content-Type: application/json'
 #sweep all to out pay to address
-curl http://localhost:18082/json_rpc -d "{\"jsonrpc\":\"2.0\",\"id\":\"0\",\"method\":\"sweep_all\",\"params\":{\"address\":\"${pay_to_address}\",\"do_not_relay\":true}}" -H 'Content-Type: application/json'
+curl http://localhost:18082/json_rpc -d '{"jsonrpc":"2.0","id":"0","method":"sweep_all","params":{"address":"'"${pay_to_address}"'","do_not_relay":true}}' -H 'Content-Type: application/json'
 #stop wallet at the end
 curl http://localhost:18082/json_rpc -d '{"jsonrpc":"2.0","id":"0","method":"stop_wallet"}' -H 'Content-Type: application/json'
 exit 0
+
