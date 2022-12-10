@@ -144,7 +144,7 @@ if [[ $generate_from_seed == 1 ]]; then
 	seed=$(echo $seed | sed 's/%20/ /g')
 	resp_generate=$(curl -sk http://localhost:18082/json_rpc -d '{"jsonrpc":"2.0","id":"0","method":"restore_deterministic_wallet","params":{"seed":"'"${seed}"'","restore_height":'${HEIGHT}',"filename":"redeem_gift","password":""}}' -H 'Content-Type: application/json')
 else
-	resp_generate=$(curl -sk http://localhost:18082/json_rpc -d '{"jsonrpc":"2.0","id":"0","method":"generate_from_keys","params":{"address":"'"${address}"'","restore_height":${HEIGHT},"filename":"redeem_gift","spendkey":"'"${spend_key}"'","viewkey":"'"${view_key}"'","password":""}}' -H 'Content-Type: application/json')
+	resp_generate=$(curl -sk http://localhost:18082/json_rpc -d '{"jsonrpc":"2.0","id":"0","method":"generate_from_keys","params":{"address":"'"${address}"'","restore_height":'${HEIGHT}',"filename":"redeem_gift","spendkey":"'"${spend_key}"'","viewkey":"'"${view_key}"'","password":""}}' -H 'Content-Type: application/json')
 fi
 
 # todo check if error returned then exit
