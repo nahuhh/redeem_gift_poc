@@ -1,0 +1,117 @@
+#!/bin/bash
+
+source_wallet=redeem_gift
+#source_password=yourpassword
+gc_auth=defaultpassword
+#localhost recommended
+node="node2.monerodevs.org:38089/json_rpc"
+rpc_binary="./monero-wallet-rpc --stagenet"
+#TODO card_decrypt=prompt or default pw
+
+### generate gift card
+# name new card
+while [ "$confirm_id" != "confirmed" ]; do
+	read -p "Order ID: " order_id
+	printf "\nIs this correct?\nOrder ID: $order_id\n\n"
+        read -p "[Y/N/YES/NO]: " confirm
+	confirm_id=$(
+	case "$confirm" in
+        1|y|Y|yes|Yes|YES) echo "confirmed";;
+	*) printf "Try again!";;
+	esac)
+	printf "\n$confirm_id\n\n"
+done
+# create card
+echo generating gift card...
+curl -s http://localhost:18082/json_rpc -d '{"jsonrpc":"2.0","id":"0","method":"create_wallet","params":{"filename":"'$order_id'","password":"","language":"English"}}' -H 'Content-Type: application/json' | jq '.result'
+# hang if taking long
+CARD="$order_id"
+while [[ ! -f "$CARD" ]]
+do
+	sleep 1
+	printf "\nWait for card to be created...\n"
+done
+echo card created... opening... please wait...
+# open card
+curl -sk http://localhost:18082/json_rpc -d '{"jsonrpc":"2.0","id":"0","method":"open_wallet","params":{"filename":"'$order_id'","password":""}}' -H 'Content-Type: application/json' | jq -r '.result'
+echo card opened... collecting necessary info...
+# get seed
+gc_seed=$(echo $(curl -sk http://127.0.0.1:18082/json_rpc -d '{"jsonrpc":"2.0","id":"0","method":"query_key","params":{"key_type":"mnemonic"}}' -H 'Content-Type: application/json' | jq -r '.result.key'))
+# get address
+gc_addr=$(echo $(curl -sk http://127.0.0.1:18082/json_rpc -d '{"jsonrpc":"2.0","id":"0","method":"get_address","params":{"account_index":0,"address_index":[0]}}' -H 'Content-Type: application/json' | jq -r '.result.address'))
+# close card
+curl -sk http://localhost:18082/json_rpc -d '{"jsonrpc":"2.0","id":"0","method":"close_wallet"}' -H 'Content-Type: application/json' | jq -r '.result'
+printf "\n$gc_seed\n"
+printf "\n$gc_addr\n"
+
+### transfer funds to gc
+# query amount
+while [ "$confirm_amount" != "confirmed" ]; do
+	read -p "How much XMR to load onto gift card? " load_xmr
+	printf "Load "$load_xmr"xmr onto \"$order_id\"\n\n"
+        read -p "[Y/N/YES/NO]: " confirm
+	confirm_amount=$(
+	case "$confirm" in
+        1|y|Y|yes|Yes|YES) echo "confirmed";;
+        *) echo "Try again!";;
+	esac)
+	printf "\n$confirm_amount\n"
+done
+# convert to piconero
+load_xmr=$(($load_xmr * 1000000000000))
+# open source wallet
+curl http://localhost:18082/json_rpc -d '{"jsonrpc":"2.0","id":"0","method":"open_wallet","params":{"filename":"'$source_wallet'","password":"'$source_password'"}}' -H 'Content-Type: application/json'
+WALLET="$source_wallet"
+while [[ ! -f "$WALLET" ]]; do
+        sleep 3
+	printf "\nWaiting for wallet to load...\n"
+done
+#TODO hang and report sync progress until ready (wallet vs node height)
+while [[ $source_height -lt $node_height ]]; do
+	source_height=$(echo $(curl http://127.0.0.1:18082/json_rpc -d '{"jsonrpc":"2.0","id":"0","method":"get_height"}' -H 'Content-Type: application/json' | jq .result.height))
+	node_height=$(echo $(curl -sk $node -d '{"jsonrpc":"2.0","id":"0","method":"get_info"}' -H 'Content-Type: application/json' | jq .result.height))
+	echo "syncing source wallet... (($node_height-$source_height))/$node_height remaining"
+	sleep 3
+done
+echo -e "\n\nsynced\n"
+# transfer funds from source to gift card
+curl http://127.0.0.1:18082/json_rpc -d '{"jsonrpc":"2.0","id":"0","method":"transfer","params":{"destinations":[{"amount":'$load_xmr',"address":"'$gc_addr'"}],"priority":0,"get_tx_key": true}}' -H 'Content-Type: application/json'
+echo -e "\n\ntransfer sent\n"
+# dummy txid 123444 remove 2 lines
+txid_out=$(curl -sk http://127.0.0.1:18082/json_rpc -d '{"jsonrpc":"2.0","id":"0","method":"get_transfers","params":{"in":true,"pending":true}}' -H 'Content-Type: application/json' | jq  -r '.result.in[].txid')
+uriify_txid=$(echo $txid_out | sed 's/ /,/g')
+
+### create uri
+echo opening gift card...
+curl -sk http://localhost:18082/json_rpc -d '{"jsonrpc":"2.0","id":"0","method":"open_wallet","params":{"filename":"'$order_id'","password":"'$gc_auth'"}}' -H 'Content-Type: application/json' | jq -r '.result'
+while [[ $card_height -lt $node_height ]]; do
+	card_height=$(echo $(curl http://127.0.0.1:18082/json_rpc -d '{"jsonrpc":"2.0","id":"0","method":"get_height"}' -H 'Content-Type: application/json' | jq .result.height))
+	node_height=$(echo $(curl -sk $node -d '{"jsonrpc":"2.0","id":"0","method":"get_info"}' -H 'Content-Type: application/json' | jq .result.target_height))
+	echo "syncing card...(($node_height-$card_height))/$node_height remaining"
+	sleep 3
+done
+echo done.
+# real txid 123444 uncomment 2 lines
+#txid_in=$(curl -sk http://127.0.0.1:18082/json_rpc -d '{"jsonrpc":"2.0","id":"0","method":"get_transfers","params":{"in":true,"pending":true}}' -H 'Content-Type: application/json' | jq  -r '.result.in[].txid')
+#uriify_txid=$(echo $txid_in | sed 's/ /,/g')
+uriify_seed=$(echo $gc_seed | sed 's/ /%20/g')
+#TODO remove cat cleartext test
+echo monero_wallet:seed="$uriify_seed&txid=$uriify_txid" > uriify
+cat uriify
+# encrypt the uri
+gpg -ca uriify
+cat uriify.asc
+
+### Write the card
+#TODO desktop solution
+#TODO check and retry
+echo writing tag
+#termux-nfc -w -t "$(cat uriify.asc)"
+
+# close source wallet
+curl -sk http://localhost:18082/json_rpc -d '{"jsonrpc":"2.0","id":"0","method":"close_wallet"}' -H 'Content-Type: application/json' | jq -r '.result'
+### stop rpc server # only necessary for single use
+# curl http://localhost:18082/json_rpc -d '{"jsonrpc":"2.0","id":"0","method":"stop_wallet"}' -H 'Content-Type: application/json'
+# delete cleartext uri
+rm uriify
+echo Finished
