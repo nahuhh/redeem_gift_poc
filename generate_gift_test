@@ -9,9 +9,32 @@ node="node2.monerodevs.org:38089/json_rpc"
 rpc_binary="./monero-wallet-rpc --stagenet"
 #TODO card_decrypt=prompt or default pw
 
+# check rpc
+if [ ! $(pidof monero-wallet-rpc) ]; then
+# start rpc wallet and hang until its 'available' for rpc commands
+REQ=$(curl -sk $node -d '{"jsonrpc":"2.0","id":"0","method":"get_info"}' -H 'Content-Type: application/json')
+HEIGHT=$(echo $REQ | jq '.result.height')
+
+$rpc_binary --wallet-dir "$(pwd)" \
+--rpc-bind-port 18082 \
+--daemon-host $node \
+--log-level 0 \
+--disable-rpc-login 2>&1 & #outputs rpc into the same terminal window / continues script
+status=""
+spam=0
+while [[ -z "$status" ]]
+do
+	sleep 1
+	if [[ $spam == 3 ]]; then printf "\nRPC not available yet..."; spam=0; fi ; ((spam++))
+	status=$(curl -sk http://localhost:18082/json_rpc -d '{"jsonrpc":"2.0","id":"0","method":"stop_wallet"}' -H 'Content-Type: application/json')
+done
+else
+echo "rpc server already running"
+fi
 ### generate gift card
 # name new card
 while [ "$confirm_id" != "confirmed" ]; do
+	echo -e "\n\nCreate an \"Order ID\""
 	read -p "Order ID: " order_id
 	printf "\n\nIs this correct?\nOrder ID: $order_id\n"
         read -p "[Y/N/YES/NO]: " confirm
@@ -77,6 +100,7 @@ done
 echo -e "\n\nsource wallet opened\n"
 # transfer funds from source to gift card
 txid_out=$(echo $(curl -sk http://127.0.0.1:18082/json_rpc -d '{"jsonrpc":"2.0","id":"0","method":"transfer","params":{"destinations":[{"amount":"'$load_xmr'","address":"'$gc_addr'"}],"priority":0,"do_not_relay": true,"get_tx_key": true}}' -H 'Content-Type: application/json' | jq -r '.result.tx_hash'))
+sleep 5
 echo -e "transfer sent\n"
 uriify_txid=$(echo $txid_out | sed 's/ /,/g')
 
