@@ -100,10 +100,10 @@ if [ $view_key ]; then
 printf "view_key:\n$view_key\n"
 printf "spend_key:\n$spend_key\n"
 else
-printf "txid list:\n$txid\n"
-printf "your address:\n$pay_to_address\n"
 #printf "seed:\n'$seed'\n"
 fi
+printf "txid list:\n$txid\n"
+printf "your address:\n$pay_to_address\n"
 
 # confirm 4 requirements (address/spend/view/txids) or (seed/txids)
 if [[ ! "$txid" ]]; then
